@@ -98,5 +98,4 @@ yarn-error.log*
 # Add any additional custom ignores below this line
 # For example, to ignore a specific file:
 Next-Word-Prediction-Project.code-workspace
-#/Users/adrianadewunmi/VSCODE/Next-Word-Prediction-Project/Next-Word-Prediction-Project.code-workspace
 This `.gitignore` file covers common files and directories that should be ignored in a Python/Django project, including virtual environments, build artifacts, logs, and specific directories like `/path` and `/.venv`. Adjust as necessary for your specific project needs!
