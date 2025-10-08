@@ -7,3 +7,6 @@ tqdm>=4.66
 
 # Optional (only needed if you also save/load .h5 models)
 h5py>=3.9
+
+# Environment variables
+python-dotenv>=1.0
