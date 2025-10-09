@@ -11,6 +11,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 from ..utils.text import normalize_text_ascii_letters_only
+from tensorflow.keras.models import load_model
 
 @dataclass
 class ArtifactsConfig:
@@ -55,10 +56,15 @@ class NextWordPredictor:
 
     def _load(self):
         if self._model is None:
-            self._model = load_model(self.cfg.model_path)
-        if self._tokenizer is None:
-            with self.cfg.tokenizer_path.open("rb") as f:
-                self._tokenizer = pickle.load(f)
+            p = self.cfg.model_path
+            try:
+                self._model = load_model(p, compile=False)
+            except Exception:
+                # fallback: swap suffix between .h5 <-> .keras if present
+                alt = p.with_suffix(".keras") if p.suffix == ".h5" else p.with_suffix(".h5")
+                self._model = load_model(alt, compile=False)
+    # tokenizer as above...
+
 
     def get_seq_length(self) -> int:
         """
