@@ -31,8 +31,8 @@ def _read_metadata_seq_length(path: Path) -> Optional[int]:
         return sl if sl and sl > 0 else None
     except Exception:
         return None
-   
-    
+
+
 def _infer_seq_length_from_model(model) -> Optional[int]:
     try:
         shape = getattr(model, "input_shape", None)
@@ -41,3 +41,22 @@ def _infer_seq_length_from_model(model) -> Optional[int]:
     except Exception:
         pass
     return None
+
+
+class NextWordPredictor:
+    """
+    Load the trained next-word model + tokenizer and perform inference.
+    Model/tokenizer are loaded once and cached for subsequent requests.
+    """
+    def __init__(self, cfg: ArtifactsConfig):
+        self.cfg = cfg
+        self._model = None
+        self._tokenizer = None
+        self._seq_length_cached: Optional[int] = None
+
+    def _load(self):
+        if self._model is None:
+            self._model = load_model(self.cfg.model_path)
+        if self._tokenizer is None:
+            with self.cfg.tokenizer_path.open("rb") as f:
+                self._tokenizer = pickle.load(f)
