@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Next-Word Prediction</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }
+    .container { max-width: 860px; margin: 0 auto; }
+    textarea { width: 100%; font: inherit; }
+    .box { border: 1px solid #ddd; padding: 1rem; border-radius: 8px; background: #fafafa; }
+    .error { color: #a00; }
+    .result { white-space: pre-wrap; background: #fff; }
+    .muted { color: #666; font-size: 0.95rem; }
+    .btn { padding: 0.6rem 1rem; border: 1px solid #333; background: #111; color: #fff; border-radius: 6px; cursor: pointer; }
+    .btn:hover { background: #000; }
+    label { font-weight: 600; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Next-Word Prediction</h1>
+
+  <div class="box" style="margin-bottom:1rem;">
+    <p><strong>How it works</strong></p>
+    <ul class="muted">
+      <li>Enter exactly <strong>{{ seq_length }}</strong> words (tokens) in the box below.</li>
+      <li>We normalize like training: lowercase, letters-only (ASCII), collapse spaces.</li>
+      <li>We then run the trained LSTM to predict the next words and display the result here.</li>
+    </ul>
+  </div>
+
+  <form method="post" class="box">
+    {% csrf_token %}
+    <div>
+      {{ form.seed_text.label_tag }}
+      {{ form.seed_text }}
+      {% if form.seed_text.help_text %}<div class="muted">{{ form.seed_text.help_text }}</div>{% endif %}
+      {% if form.seed_text.errors %}<div class="error">{{ form.seed_text.errors }}</div>{% endif %}
+    </div>
+    <div style="margin-top:1rem;">
+      <button class="btn" type="submit">Predict next words</button>
+    </div>
+  </form>
+
+  {% if error %}
+  <div class="box error" style="margin-top:1rem;">{{ error }}</div>
+  {% endif %}
+
+  {% if result %}
+  <div class="box result" style="margin-top:1rem;">
+    <strong>Prediction:</strong>
+    <div>{{ result }}</div>
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>
