@@ -31,3 +31,13 @@ def _read_metadata_seq_length(path: Path) -> Optional[int]:
         return sl if sl and sl > 0 else None
     except Exception:
         return None
+   
+    
+def _infer_seq_length_from_model(model) -> Optional[int]:
+    try:
+        shape = getattr(model, "input_shape", None)
+        if isinstance(shape, (list, tuple)) and len(shape) >= 2 and isinstance(shape[1], int):
+            return int(shape[1])
+    except Exception:
+        pass
+    return None
