@@ -69,4 +69,5 @@ yarn-error.log*
 # --- Requested explicit ignore ---
 /path/
 /.venv/
+verv
 This `.gitignore` file covers common files and directories that should be ignored in a Python/Django project, including virtual environments, build artifacts, logs, and specific directories like `/path` and `/.venv`. Adjust as necessary for your specific project needs!
