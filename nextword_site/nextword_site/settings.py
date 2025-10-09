@@ -79,7 +79,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # --- Model artifacts configuration ---
 # You can override these via environment variables or use the defaults below.
 ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", BASE_DIR / "predictor" / "artifacts"))
-MODEL_PATH = Path(os.getenv("MODEL_PATH", ARTIFACTS_DIR / "nextWordPredict" / "nextWord.keras"))
+MODEL_PATH = Path(os.getenv("MODEL_PATH", ARTIFACTS_DIR / "nextWordPredict" / "nextWord.h5"))
 TOKENIZER_PATH = Path(os.getenv("TOKENIZER_PATH", ARTIFACTS_DIR / "tokenizer.pkl"))
 METADATA_PATH = Path(os.getenv("METADATA_PATH", ARTIFACTS_DIR / "metadata.json"))
 
