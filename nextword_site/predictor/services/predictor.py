@@ -14,6 +14,65 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from ..utils.text import normalize_text_ascii_letters_only
 import io, pickle
 
+# --- Sampling with temperature, top-k/p, repetition penalty ---
+def _sample_next_id(
+    probs: np.ndarray,
+    *,
+    temperature: float,
+    top_k: int | None,
+    top_p: float | None,
+    repetition_penalty: float,
+    recent_ids: list[int],
+    recent_window: int,
+    rng: np.random.Generator,
+) -> int:
+    """
+    Sample a token id from softmax probabilities with temperature scaling,
+    optional top-k or top-p (nucleus) filtering, and a light repetition penalty.
+
+    Notes:
+      - Apply either top_k or top_p (if both given, top_k wins).
+      - repetition_penalty > 1.0 down-weights tokens seen in the recent window.
+    """
+    # Temperature
+    logits = np.log(probs + 1e-9) / max(temperature, 1e-6)
+    p = np.exp(logits)
+    p /= p.sum()
+
+    # Repetition penalty on recent ids
+    if repetition_penalty and repetition_penalty > 1.0 and recent_ids:
+        for tid in set(recent_ids[-max(1, recent_window):]):
+            if 0 <= tid < p.size:
+                p[tid] /= repetition_penalty
+        p = np.clip(p, 0, None)
+        s = p.sum()
+        if s > 0:
+            p /= s
+        else:
+            # fallback if all probs vanished
+            p = np.ones_like(p) / p.size
+
+    # Top-k
+    if top_k and top_k > 0 and top_k < p.size:
+        idxs = np.argpartition(p, -top_k)[-top_k:]
+        sub = p[idxs]
+        sub = sub / sub.sum()
+        return int(rng.choice(idxs, p=sub))
+
+    # Top-p (nucleus)
+    if top_p and 0 < top_p < 1:
+        sort_idx = np.argsort(-p)
+        sort_p = p[sort_idx]
+        csum = np.cumsum(sort_p)
+        cutoff = np.searchsorted(csum, top_p, side="right") + 1
+        idxs = sort_idx[:cutoff]
+        sub = p[idxs] / p[idxs].sum()
+        return int(rng.choice(idxs, p=sub))
+
+    # Plain multinomial
+    return int(rng.choice(p.size, p=p))
+
+
 # --- Keras 3 → tf.keras tokenizer pickle compatibility (handles keras.src + keras.src.legacy) ---
 
 

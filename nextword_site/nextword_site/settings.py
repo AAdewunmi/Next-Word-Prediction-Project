@@ -76,6 +76,15 @@ else:
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# --- Decoding settings (can override via .env) ---
+DECODE_STRATEGY = os.getenv("DECODE_STRATEGY", "sampling")  # "sampling" | "greedy"
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.9"))        # 0.7–1.0 usually good
+TOP_K = int(os.getenv("TOP_K", "50"))                       # set 0 to disable
+TOP_P = float(os.getenv("TOP_P", "0.0"))                    # 0 disables; e.g., 0.9 for nucleus
+REPETITION_PENALTY = float(os.getenv("REPETITION_PENALTY", "1.15"))  # >1 discourages repeats
+RECENT_WINDOW = int(os.getenv("RECENT_WINDOW", "20"))       # tokens to consider for penalty
+
+
 # --- Model artifacts configuration ---
 # You can override these via environment variables or use the defaults below.
 ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", BASE_DIR / "predictor" / "artifacts"))
