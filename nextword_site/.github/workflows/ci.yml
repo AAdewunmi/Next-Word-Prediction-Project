@@ -42,26 +42,3 @@ jobs:
       - name: Run tests
         working-directory: nextword_site
         run: pytest -q
-
-  dependabot-automerge:
-    needs: test
-    runs-on: ubuntu-latest
-    if: ${{ github.actor == 'dependabot[bot]' && github.event_name == 'pull_request' }}
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: dependabot/fetch-metadata@v2
-        id: meta
-      - name: Auto-merge security or patch updates
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Dependabot update type: ${UPDATE_TYPE}"
-          if [[ "${UPDATE_TYPE}" == "security" || "${UPDATE_TYPE}" == "version-update:semver-patch" ]]; then
-            gh pr merge --auto --squash "${PR_URL}"
-          else
-            echo "Not auto-merging update type: ${UPDATE_TYPE}"
-          fi
