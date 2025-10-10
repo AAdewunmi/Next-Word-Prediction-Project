@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -24,7 +25,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
+          cache: pip
 
       - name: Install system deps
         run: sudo apt-get update
@@ -52,7 +53,6 @@ jobs:
     steps:
       - uses: dependabot/fetch-metadata@v2
         id: meta
-
       - name: Auto-merge security or patch updates
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
@@ -61,7 +61,6 @@ jobs:
         run: |
           echo "Dependabot update type: ${UPDATE_TYPE}"
           if [[ "${UPDATE_TYPE}" == "security" || "${UPDATE_TYPE}" == "version-update:semver-patch" ]]; then
-            echo "Enabling auto-merge (squash)…"
             gh pr merge --auto --squash "${PR_URL}"
           else
             echo "Not auto-merging update type: ${UPDATE_TYPE}"
