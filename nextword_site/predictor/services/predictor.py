@@ -12,58 +12,56 @@ from tensorflow.keras.layers import Embedding, LSTM, Dense
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 from ..utils.text import normalize_text_ascii_letters_only
+import io, pickle
+
+# --- Keras 3 → tf.keras tokenizer pickle compatibility (handles keras.src + keras.src.legacy) ---
 
 
-# --- Keras 3 → tf.keras tokenizer pickle compatibility ---
+class _Keras3ToTF2Unpickler(pickle.Unpickler):
+    """
+    Rewrite module paths from Keras 3 (keras.src[.legacy].*)
+    to TF 2.x paths (tensorflow.keras.*) during unpickle.
+    """
+    _REWRITES = (
+        ("keras.src.legacy.preprocessing.text", "tensorflow.keras.preprocessing.text"),
+        ("keras.src.preprocessing.text",        "tensorflow.keras.preprocessing.text"),
+        ("keras.src.legacy.preprocessing",      "tensorflow.keras.preprocessing"),
+        ("keras.src.preprocessing",             "tensorflow.keras.preprocessing"),
+        ("keras.src.legacy",                    "tensorflow.keras"),
+        ("keras.src",                           "tensorflow.keras"),
+        ("keras",                               "tensorflow.keras"),  # last-resort catch-all
+    )
+
+    def find_class(self, module, name):
+        if module.startswith("keras") and not module.startswith("tensorflow.keras"):
+            for old, new in self._REWRITES:
+                if module.startswith(old):
+                    module = module.replace(old, new, 1)
+                    break
+        return super().find_class(module, name)
+
 def _load_tokenizer_compat(pickle_path: Path):
     """
-    Load a Tokenizer pickled in Keras 3 (module path 'keras.src...')
-    into a TF 2.10 / Keras 2 runtime by aliasing modules, then (optionally)
-    rehydrate to a native tf.keras Tokenizer via JSON.
+    Load a Tokenizer saved with Keras 3 into TF 2.10 by:
+      1) Trying a normal pickle load (works if it was tf.keras originally)
+      2) On failure, unpickling with a module-path rewriting Unpickler
+      3) If possible, normalizing to a native tf.keras Tokenizer via JSON
     """
-    import io
-    import pickle
-    import sys
-    import types
-    import tensorflow.keras as tfk
-
     raw = pickle_path.read_bytes()
 
-    # First attempt: works if pickle was created with tf.keras already
+    # 1) Plain load first (cheap)
     try:
         tok = pickle.loads(raw)
-    except ModuleNotFoundError as e:
-        if "keras.src" not in str(e):
-            raise
+    except ModuleNotFoundError:
+        # 2) Rewrite keras.src[.legacy].* → tensorflow.keras.*
+        tok = _Keras3ToTF2Unpickler(io.BytesIO(raw)).load()
 
-        # Build module aliases so 'keras.src.*' resolves to tf.keras.*
-        #  - 'keras' → a proxy module that exposes tf.keras attributes
-        #  - 'keras.src' → tf.keras
-        #  - 'keras.src.preprocessing' → tf.keras.preprocessing
-        #  - 'keras.src.preprocessing.text' → tf.keras.preprocessing.text
-        keras_proxy = sys.modules.get("keras")
-        if not keras_proxy:
-            keras_proxy = types.ModuleType("keras")
-            # mirror tf.keras attributes for direct access (best-effort)
-            keras_proxy.__dict__.update(tfk.__dict__)
-            sys.modules["keras"] = keras_proxy
-
-        sys.modules["keras.src"] = tfk
-        try:
-            sys.modules["keras.src.preprocessing"] = tfk.preprocessing
-            sys.modules["keras.src.preprocessing.text"] = tfk.preprocessing.text
-        except Exception:
-            pass
-
-        # Retry unpickle with the aliases in place
-        tok = pickle.loads(raw)
-
-    # Optional: normalize to a native tf.keras Tokenizer instance
+    # 3) Normalize to a clean tf.keras Tokenizer instance
     try:
         from tensorflow.keras.preprocessing.text import tokenizer_from_json
         tok = tokenizer_from_json(tok.to_json())
     except Exception:
-        # Best-effort only; if to_json() unavailable, continue with the loaded object
+        # If to_json() isn’t available, keep the loaded object
         pass
 
     return tok
@@ -122,8 +120,13 @@ class NextWordPredictor:
         """
         # Always load tokenizer first so we can infer vocab_size if metadata is missing
         if self._tokenizer is None:
-            with self.cfg.tokenizer_path.open("rb") as f:
-                self._tokenizer = pickle.load(f)
+            json_alt = self.cfg.tokenizer_path.with_suffix(".json")
+            if json_alt.exists():
+                from tensorflow.keras.preprocessing.text import tokenizer_from_json
+                self._tokenizer = tokenizer_from_json(json_alt.read_text(encoding="utf-8"))
+            else:
+                self._tokenizer = _load_tokenizer_compat(self.cfg.tokenizer_path)
+
 
         if self._model is None:
             p = Path(self.cfg.model_path)

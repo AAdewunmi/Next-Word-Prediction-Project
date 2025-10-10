@@ -1,9 +1,7 @@
 {
-  "created_at_utc": "2025-10-07T09:29:50Z",
+  "created_at_utc": "2025-10-10T13:14:20Z",
   "seq_length": 50,
   "vocab_size": 3723,
-  "embedding_dim": 50,
-  "lstm_units": 50,
-  "dense_units": 50,
+  "export_format": "h5",
   "python_version": "3.12.11"
 }
