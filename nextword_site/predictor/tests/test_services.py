@@ -40,3 +40,34 @@ def test_seq_length_resolution(monkeypatch, tmp_artifacts: Path):
     p._model = DummyModel()
     p._tokenizer = DummyTok()
     assert p.get_seq_length() == 4
+
+def test_sampling_path_with_topk1(monkeypatch, settings, tmp_path):
+    # Force decoding settings
+    settings.DECODE_STRATEGY = "sampling"
+    settings.TEMPERATURE = 1.0
+    settings.TOP_K = 1
+    settings.TOP_P = 0.0
+    settings.REPETITION_PENALTY = 1.0
+    settings.RECENT_WINDOW = 10
+
+    # Minimal artifacts
+    class DummyModel:
+        def predict(self, arr, verbose=0):
+            import numpy as np
+            p = np.array([[0.1, 0.1, 0.6, 0.2]])  # id=2 is max
+            return p
+    class DummyTok:
+        index_word = {2: "next"}
+        def texts_to_sequences(self, xs): return [[1, 1, 1]]  # content irrelevant for this stub
+
+    from predictor.services.predictor import NextWordPredictor, ArtifactsConfig
+    p = NextWordPredictor(ArtifactsConfig(
+        model_path=tmp_path/"m.h5", tokenizer_path=tmp_path/"t.pkl", metadata_path=tmp_path/"meta.json"
+    ))
+    # Inject stubs directly
+    p._model = DummyModel()
+    p._tokenizer = DummyTok()
+    p._seq_length_cached = 3
+
+    out, _ = p.predict("a b c", n_words=1)
+    assert out.endswith(" next")

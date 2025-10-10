@@ -14,7 +14,10 @@
     .muted { color: #666; font-size: 0.95rem; }
     .btn { padding: 0.6rem 1rem; border: 1px solid #333; background: #111; color: #fff; border-radius: 6px; cursor: pointer; }
     .btn:hover { background: #000; }
+    .btn.secondary { background: #fff; color: #111; }
+    .btn.secondary:hover { background: #f3f3f3; }
     label { font-weight: 600; }
+    .actions { display: flex; gap: .5rem; flex-wrap: wrap; }
   </style>
 </head>
 <body>
@@ -26,11 +29,11 @@
     <ul class="muted">
       <li>Enter exactly <strong>{{ seq_length }}</strong> words (tokens) in the box below.</li>
       <li>We normalize like training: lowercase, letters-only (ASCII), collapse spaces.</li>
-      <li>We then run the trained LSTM to predict the next words and display the result here.</li>
+      <li>Then we predict the continuation and show it below.</li>
     </ul>
   </div>
 
-  <form method="post" class="box">
+  <form method="post" class="box" id="predict-form">
     {% csrf_token %}
     <div>
       {{ form.seed_text.label_tag }}
@@ -38,8 +41,11 @@
       {% if form.seed_text.help_text %}<div class="muted">{{ form.seed_text.help_text }}</div>{% endif %}
       {% if form.seed_text.errors %}<div class="error">{{ form.seed_text.errors }}</div>{% endif %}
     </div>
-    <div style="margin-top:1rem;">
+
+    <div class="actions" style="margin-top:1rem;">
       <button class="btn" type="submit">Predict next words</button>
+      <!-- Clear button: does NOT submit -->
+      <button class="btn secondary" type="button" id="clear-btn" aria-label="Clear seed and prediction">Clear</button>
     </div>
   </form>
 
@@ -47,12 +53,33 @@
   <div class="box error" style="margin-top:1rem;">{{ error }}</div>
   {% endif %}
 
-  {% if result %}
-  <div class="box result" style="margin-top:1rem;">
+  <!-- Prediction container is always in DOM so JS can clear/hide it -->
+  <div id="prediction-container"
+       class="box result"
+       style="margin-top:1rem; {% if result %}display:block{% else %}display:none{% endif %}">
     <strong>Prediction:</strong>
-    <div>{{ result }}</div>
+    <div id="prediction-output">{{ result }}</div>
   </div>
-  {% endif %}
 </div>
+
+<script>
+  (function () {
+    // Django renders the textarea with id="id_seed_text" by default
+    const seed = document.getElementById('id_seed_text');
+    const clearBtn = document.getElementById('clear-btn');
+    const predContainer = document.getElementById('prediction-container');
+    const predOutput = document.getElementById('prediction-output');
+
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        if (seed) seed.value = '';
+        if (predOutput) predOutput.textContent = '';
+        if (predContainer) predContainer.style.display = 'none';
+        // Optional UX: scroll back to the textarea
+        if (seed) seed.focus();
+      });
+    }
+  })();
+</script>
 </body>
 </html>

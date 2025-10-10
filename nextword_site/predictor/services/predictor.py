@@ -341,32 +341,44 @@ class NextWordPredictor:
         return self._seq_length_cached
 
     def predict(self, seed_text: str, n_words: int = 12) -> Tuple[str, int]:
-        """Run greedy next-word generation. Returns (generated_text, latency_ms)."""
+        """
+        Run next-word generation.
+
+        Strategy:
+        - If settings.DECODE_STRATEGY == "greedy": argmax each step
+        - Else: sampling with temperature + top-k/top-p + repetition penalty
+        """
         self._load()
         seq_length = self.get_seq_length()
 
+        # Preprocess to mirror training
         cleaned = normalize_text_ascii_letters_only(seed_text)
-
         tokens = cleaned.split()
         if len(tokens) != seq_length:
             raise ValueError(f"Expected {seq_length} tokens after normalization; got {len(tokens)}.")
-
         in_text = " ".join(tokens)
-        idx_to_word = getattr(self._tokenizer, "index_word", {})
+
         start = time.perf_counter()
 
-        for _ in range(n_words):
-            enc = self._tokenizer.texts_to_sequences([in_text])[0]
-            enc = pad_sequences([enc], maxlen=seq_length, truncating="pre")
-            probs = self._model.predict(enc, verbose=0)[0]
-            next_id = int(np.argmax(probs))
-            word = idx_to_word.get(next_id)
-            if not word:
-                break
-            in_text += " " + word
+        if getattr(settings, "DECODE_STRATEGY", "sampling").lower() == "greedy":
+            idx_to_word = getattr(self._tokenizer, "index_word", {})
+            text = in_text
+            for _ in range(n_words):
+                enc = self._tokenizer.texts_to_sequences([text])[0]
+                from tensorflow.keras.preprocessing.sequence import pad_sequences
+                enc = pad_sequences([enc], maxlen=seq_length, truncating="pre")
+                probs = self._model.predict(enc, verbose=0)[0]
+                next_id = int(np.argmax(probs))
+                word = idx_to_word.get(next_id)
+                if not word:
+                    break
+                text += " " + word
+            out = text
+        else:
+            out = self._generate_sampling(in_text, n_words)
 
         latency_ms = int((time.perf_counter() - start) * 1000)
-        return in_text, latency_ms
+        return out, latency_ms
 
 
 # Singleton accessor

@@ -1,0 +1,10 @@
+a few exactly-50-word, lowercase, letters-only seeds to exercise the form
+
+Seed 1
+the service now accepts exactly fifty words so this paragraph uses plain lowercase tokens without punctuation to mirror training assumptions we expect normalization to preserve the count and the model to extend the prompt sensibly even if vocabulary remains simple for clear evaluation of prediction behavior during local testing today
+
+Seed 2
+this second sample verifies that different content remains valid input each token is separated by spaces and all letters are lowercase the server should accept precisely fifty words then append a continuation produced by the recurrent network trained on the republic corpus enabling qualitative checks of semantic drift and repetition
+
+Seed 3
+for robustness we also test boundary conditions using steady phrasing that avoids unusual symbols or numerals ensuring the validator counts exactly fifty tokens before inference and the logger records timing input cleaning sequence length and output size so we can review behavior across browsers sessions deployments and minor code changes
