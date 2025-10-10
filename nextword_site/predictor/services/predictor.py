@@ -7,11 +7,12 @@ from typing import Optional, Tuple
 
 import numpy as np
 from django.conf import settings
-from tensorflow.keras.models import load_model
+from tensorflow.keras.models import load_model, Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 from ..utils.text import normalize_text_ascii_letters_only
-from tensorflow.keras.models import load_model
+
 
 @dataclass
 class ArtifactsConfig:
@@ -23,6 +24,7 @@ class ArtifactsConfig:
 
 
 def _read_metadata_seq_length(path: Path) -> Optional[int]:
+    """Read sequence length from metadata file."""
     if not path.exists():
         return None
     try:
@@ -34,6 +36,7 @@ def _read_metadata_seq_length(path: Path) -> Optional[int]:
 
 
 def _infer_seq_length_from_model(model) -> Optional[int]:
+    """Infer sequence length from model input shape."""
     try:
         shape = getattr(model, "input_shape", None)
         if isinstance(shape, (list, tuple)) and len(shape) >= 2 and isinstance(shape[1], int):
@@ -53,28 +56,109 @@ class NextWordPredictor:
         self._model = None
         self._tokenizer = None
         self._seq_length_cached: Optional[int] = None
-    
-    
-    # “try H5 first, then .keras” fallback:
-    # def _load(self):
-    #     if self._model is None:
-    #         p = self.cfg.model_path
-    #         try:
-    #             self._model = load_model(p, compile=False)
-    #         except Exception:
-    #             # fallback: swap suffix between .h5 <-> .keras if present
-    #             alt = p.with_suffix(".keras") if p.suffix == ".h5" else p.with_suffix(".h5")
-    #             self._model = load_model(alt, compile=False)
-    # tokenizer as above...
 
-    
     def _load(self):
+        """
+        Load model/tokenizer once and cache.
+        Strategy:
+        1) Try to load full model (config+weights) via load_model(compile=False).
+        2) If that fails due to Keras 2/3 config mismatch (e.g. 'batch_shape'),
+            rebuild the architecture from metadata and load weights via load_weights().
+        """
+    # Always load tokenizer first so we can infer vocab_size if metadata is missing
+    if self._tokenizer is None:
+        with self.cfg.tokenizer_path.open("rb") as f:
+            self._tokenizer = pickle.load(f)
+
+    if self._model is None:
+        p = Path(self.cfg.model_path)
+
+        # Candidate paths (prefer .h5 for TF 2.10, then .keras)
+        candidates: list[Path] = []
+        if p.suffix in {".h5", ".keras"}:
+            # Try as given, then the alternate suffix
+            candidates.append(p)
+            candidates.append(p.with_suffix(".keras" if p.suffix == ".h5" else ".h5"))
+        else:
+            # No suffix: try .h5 first (best for TF 2.10), then .keras
+            candidates.extend([p.with_suffix(".h5"), p.with_suffix(".keras")])
+
+        last_err: Optional[Exception] = None
+
+        # 1) Try native load_model first
+        for path in candidates:
+            if not path.exists():
+                continue
+            try:
+                self._model = load_model(path, compile=False)
+                self.cfg.model_path = path  # remember what worked
+                last_err = None
+                break
+            except Exception as e:
+                # Save and try the rebuild route below
+                last_err = e
+                # Don’t break; we’ll attempt rebuild using the first existing candidate
+                self.cfg.model_path = path
+                break  # we rebuild using this path
+
         if self._model is None:
-            # compile=False avoids the “compiled metrics …” warning and is fine for inference
-            self._model = load_model(self.cfg.model_path, compile=False)
-        if self._tokenizer is None:
-            with self.cfg.tokenizer_path.open("rb") as f:
-                self._tokenizer = pickle.load(f)
+            if not self.cfg.model_path.exists():
+                raise FileNotFoundError(
+                    "Model file not found. Tried:\n  " +
+                    "\n  ".join(str(x) for x in candidates)
+                )
+
+            # 2) Rebuild from metadata + load weights
+            # Read metadata (dimensions used during training)
+            meta = {}
+            try:
+                if settings.METADATA_PATH and Path(settings.METADATA_PATH).exists():
+                    meta = json.loads(Path(settings.METADATA_PATH).read_text(encoding="utf-8"))
+            except Exception:
+                meta = {}
+
+            # Required dims
+            seq_len = (
+                settings.SEQ_LENGTH
+                or meta.get("seq_length")
+                or None
+            )
+            if not seq_len:
+                # Last resort: keep whatever get_seq_length() will infer later
+                # but we do need a concrete integer here:
+                maybe = self._seq_length_cached or 50
+                seq_len = int(maybe)
+
+            # Vocab size: prefer metadata, else tokenizer
+            vocab_size = meta.get("vocab_size") or (len(getattr(self._tokenizer, "word_index", {})) + 1)
+            embedding_dim = int(meta.get("embedding_dim") or 50)
+            lstm_units = int(meta.get("lstm_units") or 50)
+            dense_units = int(meta.get("dense_units") or 50)
+
+            # Build the architecture you used during training
+            m = Sequential()
+            m.add(Embedding(int(vocab_size), embedding_dim, input_length=int(seq_len)))
+            m.add(LSTM(lstm_units, return_sequences=True))
+            m.add(LSTM(lstm_units))
+            m.add(Dense(dense_units, activation="relu"))
+            m.add(Dense(int(vocab_size), activation="softmax"))
+            m.build(input_shape=(None, int(seq_len)))
+
+            # Load weights from the same .h5 (or .keras) file
+            # This reads only the 'model_weights' group from the file.
+            try:
+                m.load_weights(self.cfg.model_path)
+            except Exception as e2:
+                raise RuntimeError(
+                    f"Could not load weights from {self.cfg.model_path} after rebuild.\n"
+                    f"Original load_model error: {last_err}\n"
+                    f"Weights load error: {e2}"
+                ) from e2
+
+            self._model = m
+            # Ensure seq length cache is aligned
+            self._seq_length_cached = int(seq_len)
+
 
     def get_seq_length(self) -> int:
         """
@@ -91,35 +175,28 @@ class NextWordPredictor:
             self._seq_length_cached = self.cfg.seq_length_override
             return self._seq_length_cached
 
-        # Try metadata
         sl = _read_metadata_seq_length(self.cfg.metadata_path)
         if sl:
             self._seq_length_cached = sl
             return sl
 
-        # Load model solely to ask for input shape
         self._load()
         sl = _infer_seq_length_from_model(self._model)
         self._seq_length_cached = sl if sl else 50
         return self._seq_length_cached
 
     def predict(self, seed_text: str, n_words: int = 12) -> Tuple[str, int]:
-        """
-        Run greedy next-word generation. Returns (generated_text, latency_ms).
-        """
+        """Run greedy next-word generation. Returns (generated_text, latency_ms)."""
         self._load()
         seq_length = self.get_seq_length()
 
-        # Preprocess like training
         cleaned = normalize_text_ascii_letters_only(seed_text)
 
-        # Ensure seed is exactly seq_length tokens after cleaning
         tokens = cleaned.split()
         if len(tokens) != seq_length:
             raise ValueError(f"Expected {seq_length} tokens after normalization; got {len(tokens)}.")
 
         in_text = " ".join(tokens)
-
         idx_to_word = getattr(self._tokenizer, "index_word", {})
         start = time.perf_counter()
 
@@ -137,11 +214,12 @@ class NextWordPredictor:
         return in_text, latency_ms
 
 
-# --- Singleton accessor used by forms/views ---
+# Singleton accessor
 _predictor_singleton: Optional[NextWordPredictor] = None
 
 
 def get_predictor() -> NextWordPredictor:
+    """Get or create the predictor singleton instance."""
     global _predictor_singleton
     if _predictor_singleton is None:
         cfg = ArtifactsConfig(
@@ -156,7 +234,7 @@ def get_predictor() -> NextWordPredictor:
 
 def get_required_seq_length() -> int:
     """
-    Convenience used by the form to validate token count without loading TF too early:
-    - Prefer metadata.json or override; only loads model if needed.
+    Convenience used by the form to validate token count without loading TF too early.
+    Prefer metadata.json or override; only loads model if needed.
     """
     return get_predictor().get_seq_length()
