@@ -18,6 +18,9 @@ h5py>=3.9,<4;             platform_system == "Darwin" and platform_machine == "a
 tensorflow==2.16.1; platform_system != "Darwin" and python_version < "3.12"
 numpy>=1.26,<2.0;   platform_system != "Darwin" and python_version < "3.12"
 h5py>=3.9,<4;       platform_system != "Darwin" and python_version < "3.12"
+# Linux/Windows — make grpcio direct so Dependabot can patch CVEs
+grpcio>=1.56.2; platform_system != "Darwin"
+tensorflow==2.16.1; platform_system != "Darwin" and python_version < "3.12"
 
 # ---- Dev/test tooling ----
 tqdm>=4.66
