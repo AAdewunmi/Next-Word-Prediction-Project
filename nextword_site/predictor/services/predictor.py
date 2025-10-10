@@ -275,6 +275,44 @@ class NextWordPredictor:
                 self._model = m
                 # Ensure seq length cache is aligned
                 self._seq_length_cached = int(seq_len)
+    
+    
+    def _generate_sampling(self, in_text: str, n_words: int) -> str:
+        """
+        Sampling-based continuation with temperature + top-k/top-p and repetition penalty.
+        Uses settings.* knobs; prefers tokenizer.index_word for id→word mapping.
+        """
+        seq_length = self.get_seq_length()
+        idx_to_word = getattr(self._tokenizer, "index_word", {})
+        rng = np.random.default_rng()  # nondeterministic; swap to a fixed seed if you want
+
+        recent_ids: list[int] = []
+        text = in_text
+
+        for _ in range(n_words):
+            enc = self._tokenizer.texts_to_sequences([text])[0]
+            from tensorflow.keras.preprocessing.sequence import pad_sequences
+            enc = pad_sequences([enc], maxlen=seq_length, truncating="pre")
+
+            probs = self._model.predict(enc, verbose=0)[0]
+            next_id = _sample_next_id(
+                probs,
+                temperature=getattr(settings, "TEMPERATURE", 0.9),
+                top_k=(getattr(settings, "TOP_K", 50) or None),
+                top_p=(getattr(settings, "TOP_P", 0.0) or None),
+                repetition_penalty=getattr(settings, "REPETITION_PENALTY", 1.15),
+                recent_ids=recent_ids,
+                recent_window=getattr(settings, "RECENT_WINDOW", 20),
+                rng=rng,
+            )
+            # id 0 is usually OOV/pad → skip if it happens
+            word = idx_to_word.get(next_id)
+            if not word:
+                break
+            text += " " + word
+            recent_ids.append(next_id)
+
+        return text
 
 
     def get_seq_length(self) -> int:
