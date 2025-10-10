@@ -1,82 +1,215 @@
-````markdown
-# Next-Word Prediction (Django + Keras)
+# Next-Word Prediction — Django App
 
-A Django web app that serves a word-level next-word predictor trained from **Predict_words.ipynb**.
-Users provide exactly _N_ tokens (default: 50), the app normalizes input like training,
-and returns the continuation predicted by the model.
+A Django web app that serves a word-level LSTM next-word predictor trained from a Colab notebook. Users submit **exactly N words** (default **50**) and get a continuation from the trained model. The app normalizes input the same way the notebook did (lowercase, ASCII letters only, collapse spaces), validates token count, and logs predictions.
+
+> **Artifacts expected**:
+>
+> * `predictor/artifacts/nextWordPredict/nextWord.h5` (model weights; TF 2.10 friendly)
+> * `predictor/artifacts/tokenizer.pkl` **or** `predictor/artifacts/tokenizer.json` (tokenizer; JSON preferred)
+> * `predictor/artifacts/metadata.json` (contains at least `"seq_length"`)
+> * `predictor/artifacts/exactly-50-word-seed.txt` (handy seed text for testing)
+
+---
 
 ## Features
 
-- Clean UI with a single text box and inline validation (exact token count)
-- Server-side preprocessing consistent with the notebook
-- Fast single-pass greedy inference (sampling is easy to add)
-- DB logging of requests/responses for analytics
-- Tests (pytest + pytest-django) and CI (GitHub Actions)
+* **UX**
+
+  * Single **Seed Text** textarea with inline validation (must be exactly `seq_length` words).
+  * **Predict** button and **Clear** button (clears seed + prediction on the page).
+  * Explanation panel showing the required token count and normalization behavior.
+* **Inference**
+
+  * Loads model and tokenizer once (cached).
+  * **Decoding strategy**: sampling with temperature + top-k/top-p and a light repetition penalty (greedy available).
+  * Normalization mirrors training: lowercase → letters only → collapse spaces.
+* **Resilience**
+
+  * Accepts **`.h5`** model (TF 2.10) and will **rebuild architecture + load weights** if a newer save format confuses `load_model`.
+  * Tokenizer **pickle compat shim** for Keras 3 → tf.keras 2; prefers **`tokenizer.json`** when present.
+* **Data**
+
+  * `PredictionLog` table stores request/response, timing, IP/user agent, success/error, and timestamps.
+* **DevOps**
+
+  * `pytest` test suite (forms, views, services).
+  * GitHub Actions CI workflow.
+  * Platform-aware `requirements.txt` (Intel macOS vs Apple Silicon vs Linux).
+
+---
+
+## Screenshots
+
+> Home (empty)
+> 
+> <img width="955" height="552" alt="Image" src="https://github.com/user-attachments/assets/2818af2d-9ccd-4e5c-bdfb-1475519b6747" />
+>
+> Prediction result
+> 
+> <img width="948" height="760" alt="Image" src="https://github.com/user-attachments/assets/8464b225-d301-4137-bbdc-69215dcc1c8e" />
+
+---
+
+## Requirements
+
+* **Python**:
+
+  * Intel macOS: **3.10** (recommended for TF 2.10)
+  * Apple Silicon: 3.11 works (use `tensorflow-macos`)
+  * Linux/Windows: 3.10–3.11 with standard `tensorflow`
+* **TensorFlow**:
+
+  * Intel macOS: **2.10.1**
+  * Apple Silicon: 2.16.1 (`tensorflow-macos`)
+  * Linux/Windows: 2.16.1 (`tensorflow`)
+
+We’ve already pinned these in `requirements.txt` using PEP 508 markers.
+
+---
+
+## Project layout
+
+```
+nextword_site/
+├─ manage.py
+├─ .env.example
+├─ requirements.txt
+├─ .github/workflows/ci.yml
+├─ nextword_site/
+│  ├─ settings.py
+│  ├─ urls.py
+│  └─ wsgi.py
+└─ predictor/
+   ├─ apps.py, admin.py, urls.py, forms.py, models.py, views.py
+   ├─ templates/predictor/home.html
+   ├─ services/predictor.py
+   ├─ utils/text.py
+   ├─ tests/...
+   └─ artifacts/
+      ├─ metadata.json
+      ├─ tokenizer.pkl            # or tokenizer.json (preferred)
+      └─ nextWordPredict/
+         └─ nextWord.h5
+```
 
 ---
 
 ## Setup
 
-### 1) Clone & Python env
+### 1) Virtualenv + dependencies
 
 ```bash
-git clone https://github.com/AAdewunmi/Next-Word-Prediction-Project.git
-cd Next-Word-Prediction-Project/nextword_site
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -U pip
-pip install -r requirements.txt
-```
-````
+# macOS Intel recommended flow
+pyenv install 3.10.14   # if not already available
+pyenv local 3.10.14
+python -m venv .venv310
+source .venv310/bin/activate
 
-### 2) Place model artifacts
-
-Put your trained files under the default app directory (or set env vars below):
-
-```
-predictor/artifacts/
-├── metadata.json                  # optional but recommended (contains {"seq_length": 50, ...})
-├── tokenizer.pkl
-└── nextWordPredict/
-    └── nextWord.h5
+python -m pip install -U pip
+python -m pip install -r requirements.txt
 ```
 
-If you prefer custom locations, set in `.env`:
+### 2) Configure environment
 
-```env
-ARTIFACTS_DIR=/abs/path/to/artifacts
-MODEL_PATH=/abs/path/to/nextWordPredict/nextWord.h5
-TOKENIZER_PATH=/abs/path/to/tokenizer.pkl
-METADATA_PATH=/abs/path/to/metadata.json
-# SEQ_LENGTH=50   # optional override if metadata/model not available
-```
-
-### 3) Django app
+Copy the example file and edit paths:
 
 ```bash
 cp .env.example .env
-python manage.py migrate
-python manage.py runserver
 ```
 
-Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/) and try a prompt with **exactly N tokens** (displayed at the top of the page).
+`.env` keys you’ll likely set:
+
+```ini
+SECRET_KEY=change-me
+DEBUG=true
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Absolute paths to artifacts on your machine
+MODEL_PATH=/abs/path/to/nextword_site/predictor/artifacts/nextWordPredict/nextWord.h5
+TOKENIZER_PATH=/abs/path/to/nextword_site/predictor/artifacts/tokenizer.json
+# or TOKENIZER_PATH=/abs/path/to/nextword_site/predictor/artifacts/tokenizer.pkl
+METADATA_PATH=/abs/path/to/nextword_site/predictor/artifacts/metadata.json
+
+# Decoding (optional; defaults are sensible)
+DECODE_STRATEGY=sampling         # or greedy
+TEMPERATURE=0.9
+TOP_K=50                         # set 0 to disable
+TOP_P=0.0                        # e.g., 0.9 for nucleus sampling
+REPETITION_PENALTY=1.15
+RECENT_WINDOW=20
+
+# Database (optional; defaults to SQLite)
+# DATABASE_URL=postgres://user:pass@localhost:5432/nextword
+```
+
+### 3) Database
+
+```bash
+python manage.py migrate
+```
+
+### 4) Run
+
+```bash
+export TF_CPP_MIN_LOG_LEVEL=2  # optional: quiet TF logs
+python manage.py runserver
+# http://127.0.0.1:8000/
+```
 
 ---
 
-## Using Google Drive / Colab to Produce Artifacts
+## Artifacts (what to place where)
 
-1. In Colab:
+* **Model weights**: `predictor/artifacts/nextWordPredict/nextWord.h5`
+  Saved from Colab with `model.save(".../nextWord.h5")`
+* **Tokenizer**:
 
-   ```python
-   from google.colab import drive
-   drive.mount('/content/drive')
-   ```
+  * Prefer `predictor/artifacts/tokenizer.json` (write in Colab with `tokenizer.to_json()`).
+  * If you only have a pickle (`tokenizer.pkl`), keep it — the server has a compat loader for Keras-3 pickles.
+* **Metadata**: `predictor/artifacts/metadata.json`
+  At minimum `{"seq_length": 50}` so the app can validate tokens without guessing.
+* **Seed text** (handy): `predictor/artifacts/exactly-50-word-seed.txt`
+  Use this to copy/paste into the Seed Text box.
 
-2. Train your model in `Predict_words.ipynb`.
-3. Save artifacts (model `.keras`, `tokenizer.pkl`, and `metadata.json`) to Drive.
-4. Download them or sync to your repo under `predictor/artifacts/` (or point env vars to your Drive mount if deploying on a VM with Drive mounted).
+**Example seed file content (50 words, lowercase, letters-only):**
 
-> If you used the notebook template we discussed, your metadata file already includes `seq_length`. The Django app reads it automatically; no hard-coding needed.
+```
+this simple seed text is designed to contain exactly fifty words for testing the next word prediction service in your django application ensuring that whitespace and casing do not change the token count during normalization and that the model can generate a continuation without raising errors or warnings today safely
+```
+
+> Count check: `len(open('.../exactly-50-word-seed.txt').read().split()) == 50`
+
+---
+
+## Usage
+
+1. Open the home page.
+2. Paste **exactly 50 words** (the app shows the required count) into **Seed Text**.
+3. Click **Predict next words**.
+4. Use **Clear** to reset the Seed and the Prediction textboxes without reloading.
+
+If you want “more human” text, sampling is already the default. Tweak in `.env`:
+
+```
+DECODE_STRATEGY=sampling
+TEMPERATURE=0.8
+TOP_K=50
+TOP_P=0.0
+REPETITION_PENALTY=1.2
+```
+
+---
+
+## How the pieces fit
+
+* **Normalization** (server): lowercase → remove non-letters → collapse spaces (mirrors training).
+* **Tokenizer**: loaded from JSON (preferred) or pickled with a Keras-3→tf.keras shim.
+* **Model**:
+
+  * First tries `load_model(..., compile=False)`.
+  * If that fails (e.g., `batch_shape` from newer Keras), it **rebuilds** the architecture from `metadata.json` and loads weights via `load_weights(h5)`.
+* **Decoding**: sampling (temp + top-k/top-p + repetition penalty) or greedy.
+* **Logging**: `PredictionLog` captures inputs, outputs, timing, and request metadata.
 
 ---
 
@@ -86,59 +219,52 @@ Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/) and try a prompt with **ex
 pytest -q
 ```
 
-Tests stub the TensorFlow predictor so CI runs fast and green without a GPU/AVX-capable runner.
+Tests stub the predictor for speed (no heavy TF in CI). Add more tests under `predictor/tests/`.
 
 ---
 
-## Operations
+## CI (GitHub Actions)
 
-- **Change context length**: update `metadata.json` (`seq_length`) or set `SEQ_LENGTH` in `.env`.
-- **Database**: defaults to SQLite. For Postgres set `DATABASE_URL` in `.env`:
-
-  ```
-  DATABASE_URL=postgres://USER:PASS@HOST:5432/DBNAME
-  ```
-
-- **Static files**: `STATIC_ROOT=staticfiles` (set up WhiteNoise if deploying as pure WSGI).
+The workflow at `.github/workflows/ci.yml` installs deps, runs Django checks, and executes tests on pushes and PRs. It relies on the platform-aware requirements to avoid TF headaches on Linux runners.
 
 ---
 
-## Notes
+## Troubleshooting
 
-- Output style depends strongly on training choices. Greedy decoding tends to repeat; switch to sampling if you want more variety.
-- If you see “tokenizer vocab exceeds model embedding input_dim”, you loaded mismatched artifacts. Use the _matching_ pair from the same training run.
-
-## License
-
-MIT (or your choice).
-
-````
-
----
-
-## Runbook — quick commands
-
-```bash
-# install
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# env + db + run
-cp .env.example .env
-python manage.py migrate
-python manage.py runserver
-
-# tests
-pytest -q
-````
+* **“No file or directory found at … nextWord.keras”**
+  We deploy **`nextWord.h5`** for TF 2.10. Update `MODEL_PATH` to point at `.h5` (or keep both; the loader tries both).
+* **`ValueError: Unrecognized keyword arguments: ['batch_shape']`**
+  H5 was saved by newer Keras. Loader auto-rebuilds the architecture and calls `load_weights`. No retrain needed.
+* **`ModuleNotFoundError: No module named 'keras.src'` when loading tokenizer**
+  That’s a Keras 3 pickle. We shim it; or export `tokenizer.json` from the notebook and the server will prefer JSON.
+* **Intel macOS and TF install fails**
+  Use Python **3.10** and TF **2.10.1** (already pinned). Apple Silicon uses `tensorflow-macos==2.16.1`.
 
 ---
 
-### Final notes
+## Development tips
 
-- The form enforces **exact** token count pre-submit; the service enforces it **after normalization**, mirroring training. That double-gate prevents silent mismatches.
-- The predictor is a singleton and lazy-loads artifacts. If you want a warm-up at boot, add a Django `AppConfig.ready()` hook to call `get_predictor().get_seq_length()`.
-- If you want sampling (temperature/top-k) instead of greedy, I can drop that into `services/predictor.py` as `predict_sampled(...)` and toggle via an env flag.
+* Switch decoding on the fly via `.env` (no code change).
+* Want deterministic sampling for demos? You can seed the RNG in `services/predictor.py` where we create `np.random.default_rng()`.
+* If you ever change `seq_length` in training, update `metadata.json` so the UI validation and the service stay in sync.
+
+
+---
+
+## Credits
+
+* Training done in Colab (see `Predict_words.ipynb`).
+
+---
+
+## Acknowledgments
+
+This project benefited from assistance by **ChatGPT (OpenAI, GPT-5 Thinking)**.  
+AI support was used to accelerate Django scaffolding, environment pinning for TensorFlow on macOS Intel, 
+resilient artifact loading (H5 weights + tokenizer compat), sampling-based decoding (temperature / top-k / top-p with repetition penalty), 
+UI tweaks (Clear button), test scaffolding, and this README.
+
+All code was reviewed and integrated by the project author. Any mistakes are ours.
 
 ---
 
