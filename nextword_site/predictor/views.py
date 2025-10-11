@@ -1,47 +1,33 @@
-from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
-from django.views.decorators.http import require_http_methods
-
-from .forms import PredictionForm
-from .models import PredictionLog
-from .services.predictor import get_predictor
-from .utils.text import normalize_text_ascii_letters_only
+from .services import predictor as svc
 
 
-@require_http_methods(["GET", "POST"])
-def home(request: HttpRequest) -> HttpResponse:
+def home(request):
     """
-    Home page with input form and result panel.
+    Render the homepage and (on POST) run the next-word prediction.
+
+    Context keys:
+      - seed_text: the user-provided seed (echoed back into the textarea)
+      - prediction_text: full text returned by the model (seed + generated)
+      - elapsed_ms: inference time in milliseconds (optional display)
     """
-    form = PredictionForm(request.POST or None)
-    context = {
-        "form": form,
-        "result": None,
-        "error": None,
-        "seq_length": get_predictor().get_seq_length(),
+    ctx = {
+        "seed_text": "",
+        "prediction_text": "",
+        "elapsed_ms": None,
     }
 
-    if request.method == "POST" and form.is_valid():
-        raw = form.cleaned_data["seed_text"]
-        plog = PredictionLog(input_text=raw)
-        try:
-            generated, latency_ms = get_predictor().predict(raw, n_words=12)
-            plog.cleaned_text = normalize_text_ascii_letters_only(raw)
-            plog.seq_length_used = get_predictor().get_seq_length()
-            plog.generated_text = generated
-            plog.success = True
-            plog.latency_ms = latency_ms
-            plog.client_ip = request.META.get("REMOTE_ADDR")
-            plog.user_agent = request.META.get("HTTP_USER_AGENT", "")
-            plog.save()
-            context["result"] = generated
-        except Exception as exc:
-            plog.success = False
-            plog.error_message = str(exc)
-            plog.save()
-            context["error"] = f"Prediction failed: {exc}"
+    if request.method == "POST":
+        seed_text = (request.POST.get("seed_text") or "").strip()
+        ctx["seed_text"] = seed_text
 
-    return render(request, "predictor/home.html", context)
+        if seed_text:
+            # Load the predictor only when needed (keeps GET light, helps tests).
+            p = svc.get_predictor()
+            # IMPORTANT: return the FULL string so tests can assert on HTML content
+            full_text, elapsed_ms = p.predict(seed_text, n_words=12)
+            ctx["prediction_text"] = full_text
+            ctx["elapsed_ms"] = elapsed_ms
 
+    return render(request, "predictor/home.html", ctx)
 
-# Create your views here.
