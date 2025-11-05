@@ -1,51 +1,32 @@
-# --- Cross-platform line endings ---
-* text=auto eol=lf
+# --- Make GitHub Linguist show Python ~100% by excluding non-Python content ---
 
-# --- Treat large/binary artifacts as binary (no diffs) ---
-*.h5    binary
-*.hdf5  binary
-*.hdf   binary
-*.ckpt  binary
-*.tflite binary
-*.joblib binary
-*.pkl   binary
-*.npz   binary
-*.npy   binary
+# Exclude Jupyter notebooks from language stats
+*.ipynb linguist-vendored
 
-# --- Images & media ---
-*.png   binary
-*.jpg   binary
-*.jpeg  binary
-*.gif   binary
-*.svg   text eol=lf
+# Exclude typical non-code assets from stats
+assets/** linguist-vendored
+images/** linguist-vendored
+img/** linguist-vendored
+figures/** linguist-vendored
+docs/** linguist-vendored
 
-# --- Notebooks: keep as text to enable clean diffs in PRs ---
-*.ipynb linguist-generated=false
+# Treat generated / output artifacts as generated (also excluded from stats)
+reports/** linguist-generated
+artifacts/** linguist-generated
+outputs/** linguist-generated
+models/** linguist-generated
 
-# --- GitHub Linguist tuning (so Python dominates the language stats) ---
-# Mark front-end/static assets and workflow files as "vendored" so they don't skew language %
-# Adjust paths to match your repo layout.
-# Core app code lives under nextword_site/** (Python), which we *do* want to count.
+# Large raw data shouldn’t affect language stats
+data/** linguist-vendored
+datasets/** linguist-vendored
 
-# Django templates and static assets
-nextword_site/predictor/templates/** linguist-vendored
-nextword_site/predictor/static/**    linguist-vendored
+# If you keep small helper HTML/CSS/JS, exclude them from stats too
+*.html linguist-vendored
+*.css  linguist-vendored
+*.js   linguist-vendored
 
-# Site-wide static (if present)
-static/**                             linguist-vendored
-templates/**                          linguist-vendored
-
-# Sample data & model artifacts
-sample_data/**                        linguist-vendored
-models/**                              linguist-vendored
-nextword_site/predictor/artifacts/**  linguist-vendored
-
-# CI/config/docs
-.github/**                            linguist-vendored
-docs/**                               linguist-vendored
-
-# Workspace/editor files
-*.code-workspace                      linguist-vendored
-
-# README and notebooks should still show up normally
-README.md linguist-documentation
+# (Optional) exclude CSVs and similar from stats
+*.csv linguist-vendored
+*.tsv linguist-vendored
+*.parquet linguist-vendored
+*.feather linguist-vendored

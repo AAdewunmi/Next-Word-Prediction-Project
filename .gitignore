@@ -1,16 +1,26 @@
 # --- Python ---
 __pycache__/
 *.py[cod]
-*.pyc
-*.pyo
-*.pyd
 *.so
+*.dylib
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
 
 # Virtual environments
 .venv/
 venv/
 ENV/
 env/
+.env/
+.envrc
+
+# --- Jupyter / notebooks ---
+.ipynb_checkpoints/
+*.nbconvert.ipynb
 
 # Build / packaging
 build/
@@ -82,3 +92,51 @@ node_modules/
 # --- Git & tooling ---
 # Keep pre-commit caches out of the repo
 .pre-commit-config.yaml.bak
+
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+.vscode/
+*.code-workspace
+.idea/
+*.iml
+
+# --- Data / models / artifacts (keep README stubs if you want folders in repo) ---
+data/
+!data/.gitkeep
+!data/README.md
+
+datasets/
+!datasets/.gitkeep
+!datasets/README.md
+
+models/
+!models/.gitkeep
+!models/README.md
+
+reports/
+!reports/.gitkeep
+!reports/README.md
+
+artifacts/
+!artifacts/.gitkeep
+!artifacts/README.md
+
+outputs/
+!outputs/.gitkeep
+!outputs/README.md
+
+# --- Logs / cache / coverage ---
+logs/
+*.log
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+
+# --- Misc generated files ---
+*.tmp
+*.bak
+*.swp
+*.swo
